@@ -1,0 +1,42 @@
+name: RDP with ngrok
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rdp:
+    runs-on: windows-latest
+
+    steps:
+    - name: Create RDP User and Enable RDP
+      shell: powershell
+      run: |
+        $username = "runneradmin"
+        $password = "MyStrongPassWord123"
+        net user $username $password /add
+        net localgroup administrators $username /add
+        Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+    - name: Download and Run ngrok
+      shell: cmd
+      env:
+        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+      run: |
+        curl -o ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-windows-amd64.zip
+        powershell -Command "Expand-Archive ngrok.zip -DestinationPath ."
+        .\ngrok.exe config add-authtoken %NGROK_AUTH_TOKEN%
+        start /b .\ngrok.exe tcp 3389
+        timeout /t 15
+        curl http://127.0.0.1:4040/api/tunnels -o tunnels.json
+        powershell -Command "$json = Get-Content -Raw tunnels.json | ConvertFrom-Json; $url = $json.tunnels[0].public_url; Write-Host ('🔗 RDP Address: ' + $url.Replace('tcp://', ''))"
+        echo 👤 Username: runneradmin
+        echo 🔑 Password: MyStrongPassWord123
+
+    - name: Keep session alive for 6 hours
+      shell: powershell
+      run: |
+        for ($i = 0; $i -lt 360; $i++) {
+          Write-Output "⏳ Alive: $i minutes"
+          Start-Sleep -Seconds 60
+        }
